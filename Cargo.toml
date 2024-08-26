@@ -1,0 +1,11 @@
+[package]
+name = "big"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+getopts = "0.2.21" # for easy arguments handling
+rusttype = "0.9.3" # for using fonts
+crossterm = "0.28.1" # for terminal manipulation
