@@ -2,12 +2,14 @@
 use std::env;
 use std::io::stdout;
 use std::time::Instant;
+use std::thread::sleep;
 
 // crates
 use getopts::Options;
 use crossterm;
 use rusttype::{point, Font, Scale};
 
+const MAX_FRAMERATE: u32 = 60;
 const PUNCTUATION: &str = ".,!?;:";
 
 fn render_word(word: &str, font: &Font, height: f32, mapping_chars: &str) -> Vec<Vec<u8>> { // See https://github.com/redox-os/rusttype/blob/master/dev/examples/ascii.rs
@@ -119,6 +121,7 @@ fn main() {
 		return;
 	};
 	
+	let min_frametime = 1000 / MAX_FRAMERATE;
 	let mut stdout = stdout();
 	
 	crossterm::terminal::enable_raw_mode().unwrap();
@@ -132,6 +135,7 @@ fn main() {
 			let timer = Instant::now();
 			while timer.elapsed().as_millis() < time as u128 {
 				let progress = timer.elapsed().as_millis() as f32 / time as f32;
+				let frametime = Instant::now();    
 				let tsize = crossterm::terminal::size().unwrap();
 				let mut pixels: Vec<Vec<u8>> = vec![vec![b' '; tsize.0 as usize]; tsize.1 as usize];
 				
@@ -156,7 +160,11 @@ fn main() {
 					if let crossterm::event::Event::Key(_key_event) = crossterm::event::read().unwrap() {
 						break 'outer;
 					}
-				}    
+				}
+				
+				if frametime.elapsed().as_millis() < min_frametime as u128 {
+					sleep(std::time::Duration::from_millis(min_frametime as u64) - frametime.elapsed());
+				}
 			}
 		}
 		
