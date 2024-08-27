@@ -11,3 +11,5 @@ Options:
     -l, --loop          loop text
     -h, --help          print this help menu
 ```
+
+Press any key to exit. Cross-platform, tested on Linux (Konsole) and Windows 11 (cmd).
