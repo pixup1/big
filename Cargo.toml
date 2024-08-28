@@ -9,3 +9,4 @@ edition = "2021"
 getopts = "0.2.21" # for easy arguments handling
 rusttype = "0.9.3" # for using fonts
 crossterm = "0.28.1" # for terminal manipulation
+rand = "0.8.5" # for random effects

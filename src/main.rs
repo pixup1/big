@@ -1,25 +1,30 @@
 // std
-use std::env;
-use std::io::stdout;
-use std::time::Instant;
+use std::{env, thread};
+use std::io::{self, BufRead, IsTerminal, stdout};
+use std::time::{Duration, Instant};
 use std::thread::sleep;
+use std::sync::mpsc;
+use std::panic;
 
 // crates
 use getopts::Options;
 use crossterm;
 use rusttype::{point, Font, Scale};
+use rand::Rng;
+
+// source files
+mod effects;
 
 const MAX_FRAMERATE: u32 = 60;
 const PUNCTUATION: &str = ".,!?;:";
 
-fn render_word(word: &str, font: &Font, height: f32, mapping_chars: &str) -> Vec<Vec<u8>> { // See https://github.com/redox-os/rusttype/blob/master/dev/examples/ascii.rs
+// See https://github.com/redox-os/rusttype/blob/master/dev/examples/ascii.rs
+fn render_word(word: &str, font: &Font, mapping_chars: &str, height: f32, max_width: Option<f32>) -> Vec<Vec<u8>> {
 	// Compensate for the aspect ratio of monospace characters
 	let scale = Scale {
 		x: height * 2.0,
 		y: height,
 	};
-	
-	let height = height.ceil() as usize;
 	
 	let v_metrics = font.v_metrics(scale);
 	let offset = point(0.0, v_metrics.ascent);
@@ -34,7 +39,7 @@ fn render_word(word: &str, font: &Font, height: f32, mapping_chars: &str) -> Vec
 		.unwrap_or(0.0)
 		.ceil() as usize;
 	
-	let mut pixels = vec![vec![b' '; width]; height]; // 2D array of characters, each row is a line of text
+	let mut pixels = vec![vec![b' '; width]; height.ceil() as usize]; // 2D array of characters, each row is a line of text
 	let mapping = mapping_chars.as_bytes();
 	let mapping_scale = (mapping.len() - 1) as f32;
 	
@@ -59,25 +64,25 @@ fn render_word(word: &str, font: &Font, height: f32, mapping_chars: &str) -> Vec
 	return pixels;
 }
 
-fn display(pixels: &mut Vec<Vec<u8>>, todraw: Vec<Vec<u8>>, x: i32, y: i32) { // Display pixels centered at x,y
-	let origin = (x - todraw[0].len() as i32 / 2, y - todraw.len() as i32 / 2);    
+fn comp(pixels: &mut Vec<Vec<u8>>, to_comp: Vec<Vec<u8>>, x: i32, y: i32) { // Display pixels centered at x,y
+	let origin = (x - to_comp[0].len() as i32 / 2, y - to_comp.len() as i32 / 2);    
 	
-	for i in 0..todraw.len() {
-		for j in 0..todraw[i].len() {
+	for i in 0..to_comp.len() {
+		for j in 0..to_comp[i].len() {
 			let x = origin.0 + j as i32;
 			let y = origin.1 + i as i32;
-			if x >= 0 && x < pixels[0].len() as i32 && y >= 0 && y < pixels.len() as i32 {
-				pixels[y as usize][x as usize] = todraw[i][j];
+			if to_comp[i][j] != b' ' && x >= 0 && x < pixels[0].len() as i32 && y >= 0 && y < pixels.len() as i32 {
+				pixels[y as usize][x as usize] = to_comp[i][j];
 			}
 		}
 	}
 }
 
-fn scroll(pixels: &mut Vec<Vec<u8>>, todraw: Vec<Vec<u8>>, progress: f32) {
+fn scroll(pixels: &mut Vec<Vec<u8>>, to_comp: Vec<Vec<u8>>, progress: f32) {
 	let tsize = crossterm::terminal::size().unwrap();
-	let x = (1.0-progress) * (0.25 * tsize.0 as f32 + todraw[0].len() as f32 / 2.0) + progress * (tsize.0 as f32 * 0.75 - todraw[0].len() as f32 / 2.0);
+	let x = (1.0-progress) * (0.3 * tsize.0 as f32 + to_comp[0].len() as f32 / 2.0) + progress * (tsize.0 as f32 * 0.7     - to_comp[0].len() as f32 / 2.0);
 	
-	display(pixels, todraw, x as i32, tsize.1 as i32 / 2);
+	comp(pixels, to_comp, x as i32, tsize.1 as i32 / 2);
 }
 
 fn print_usage(program: &str, opts: Options) {
@@ -85,6 +90,17 @@ fn print_usage(program: &str, opts: Options) {
 	print!("{}", opts.usage(&brief));
 }
 
+fn read_stdin(tx: &    mpsc::Sender<String>) {
+	let stdin = io::stdin();
+	let reader = stdin.lock();
+	
+	for line in reader.lines() {
+		match line {
+			Ok(content) => tx.send(content).unwrap(),
+			Err(e) => panic!("Error: {}", e),
+		}
+	}
+}
 
 fn main() {
 	// getopts things
@@ -114,37 +130,78 @@ fn main() {
 		Some(inverse_speed) => 10.0 / inverse_speed.parse::<i32>().unwrap_or(10) as f32,
 		None => 1.0
 	};
-	let text = if !matches.free.is_empty() {
-		matches.free[0].clone()
+	
+	let mut text = String::new();
+	
+	let mut piped = false;
+	let (tx, rx) = mpsc::channel();
+	if !io::stdin().is_terminal() { // We are being piped to
+		piped = true;
+		 // Ignore user input
+		thread::spawn(move || read_stdin(&tx));
 	} else {
-		print_usage(&program, opts);
-		return;
-	};
+		text = if !matches.free.is_empty() {
+			matches.free[0].clone()
+		} else {
+			print_usage(&program, opts);
+			return;
+		};
+	}
 	
 	let min_frametime = 1000 / MAX_FRAMERATE;
 	let mut stdout = stdout();
+	let mut rng = rand::thread_rng();
 	
 	crossterm::terminal::enable_raw_mode().unwrap();
 	crossterm::execute!(stdout, crossterm::cursor::Hide).unwrap();
 	crossterm::execute!(stdout, crossterm::terminal::DisableLineWrap).unwrap();
 	crossterm::execute!(stdout, crossterm::terminal::EnterAlternateScreen).unwrap();
 	
+	// This will be called on a panic so the terminal doesn't stay all messed up
+	/*panic::set_hook(Box::new(|info| {
+		let mut stdout = std::io::stdout();
+		
+		crossterm::terminal::disable_raw_mode().unwrap();
+		crossterm::execute!(stdout, crossterm::terminal::EnableLineWrap).unwrap();
+		crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
+		crossterm::execute!(stdout, crossterm::cursor::Show).unwrap();
+		
+		println!("{}", info);
+	}));*/
+	
 	'outer: loop {
 		for word in text.split_whitespace() { // Main loop
-			let time = ((200.0 + 60.0 * word.len() as f32 + if PUNCTUATION.contains(word.chars().last().unwrap()) {350.0} else {0.0}) * speed) as i32; // Time to show current word for in milliseconds
+			let random = (rng.gen::<i32>(), rng.gen::<i32>());
+			let scroll_fit = rng.gen::<bool>(); // If false words will be shrunk to fit
+			
+			// Time to show current word for in milliseconds
+			let time = ((200.0 + 60.0 * word.len() as f32
+				+ if PUNCTUATION.contains(word.chars().last().unwrap()) {350.0} else {0.0})
+				* speed) as i32;
+			
 			let timer = Instant::now();
+			
 			while timer.elapsed().as_millis() < time as u128 {
 				let progress = timer.elapsed().as_millis() as f32 / time as f32;
 				let frametime = Instant::now();    
 				let tsize = crossterm::terminal::size().unwrap();
 				let mut pixels: Vec<Vec<u8>> = vec![vec![b' '; tsize.0 as usize]; tsize.1 as usize];
 				
-				let render = render_word(word, &font, ((tsize.1 as f32)/2.0).max(10.0 as f32), " .:-=+*#%@"); 
+				effects::background_effect(&mut pixels, progress, random.0);
 				
-				if render[0].len() as u16 > tsize.0 {
+				let max_width = match scroll_fit {
+					true => None,
+					false => Some((tsize.0 - 6) as f32)
+				};
+				
+				let mut render = render_word(word, &font, " .:-=+*#%@", ((tsize.1 as f32)/2.0).max(10.0 as f32), max_width); 
+				
+				effects::text_effect(&mut render, progress, random.1);
+				
+				if render[0].len() as u16 > tsize.0 /*&& scroll_fit*/ {
 					scroll(&mut pixels, render, progress);    
 				} else {
-					display(&mut pixels, render, tsize.0 as i32 / 2, tsize.1 as i32 / 2);
+					comp(&mut pixels, render, tsize.0 as i32 / 2, tsize.1 as i32 / 2);
 				}
 				
 				for i in 0..pixels.len() {
@@ -168,11 +225,38 @@ fn main() {
 			}
 		}
 		
-		if !do_loop {
+		if !do_loop && !piped {
 			break;
+		} else if piped {
+			text = String::new();
+			
+			loop {
+				match rx.try_recv() {
+					Ok(line) => text.push_str(&line),
+					Err(error) => {
+						match error {
+							mpsc::TryRecvError::Empty => {
+								if text.is_empty() {
+									sleep(Duration::from_millis(100)) // We haven't received anything yet but the thread is still running
+								} else {
+									break // We've received something and the thread is all good, we can print it without further waiting
+								}
+							},
+							mpsc::TryRecvError::Disconnected => { // The io thread is done
+								if text.is_empty() {
+									break 'outer; // And has not sent anything
+								} else {
+									break; // And has sent something, we will stop next 'outer loop
+								}
+							} 
+						};
+					}
+				};
+			}
 		}
 	}
 	
+	crossterm::terminal::disable_raw_mode().unwrap();
 	crossterm::execute!(stdout, crossterm::terminal::EnableLineWrap).unwrap();
 	crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
 	crossterm::execute!(stdout, crossterm::cursor::Show).unwrap();
