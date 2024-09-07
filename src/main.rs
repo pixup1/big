@@ -14,6 +14,11 @@ use rand::Rng;
 
 // source files
 mod effects;
+mod color;
+mod term_colors;
+
+use effects::*;
+use color::*;
 
 const MAX_FRAMERATE: u32 = 60;
 const PUNCTUATION: &str = ".,!?;:";
@@ -61,12 +66,15 @@ fn render_word(word: &str, font: &Font, mapping_chars: &str, height: f32, max_wi
 		}
 	}
 	
-	return pixels;
+	pixels
 }
 
-fn comp(pixels: &mut Vec<Vec<u8>>, to_comp: Vec<Vec<u8>>, x: i32, y: i32) { // Display pixels centered at x,y
-	let origin = (x - to_comp[0].len() as i32 / 2, y - to_comp.len() as i32 / 2);    
+// Display pixels centered at x,y
+fn comp(pixels: &mut Vec<Vec<u8>>, to_comp: Vec<Vec<u8>>, x: i32, y: i32) {
+	let to_comp_size = size_no_escape(&to_comp);
+	let origin = (x - to_comp_size.0 as i32 / 2, y - to_comp_size.1 as i32 / 2);
 	
+	//TODO: handle escape sequences out of the screen
 	for i in 0..to_comp.len() {
 		for j in 0..to_comp[i].len() {
 			let x = origin.0 + j as i32;
@@ -109,7 +117,8 @@ fn main() {
 	
 	let mut opts = Options::new();
 	opts.optopt("f", "font", "set font", "PATH");
-	opts.optopt("s", "speed", "set text speed (default: 10)", "INTEGER");
+	opts.optopt("s", "speed", "set text speed (default: 10)", "INT");
+	opts.optopt("e", "effects", "pick only some effects", "EFFECT1 EFFECT2 ...");
 	opts.optflag("l", "loop", "loop text");
 	opts.optflag("h", "help", "print this help menu");
 	let matches = match opts.parse(&args[1..]) {
@@ -131,6 +140,38 @@ fn main() {
 		None => 1.0
 	};
 	
+	let mut free_matches = matches.free.clone(); // This one will take into account all the effects instead of just the first one, as I'm pretty sure getopts can't do that.
+	
+	let selected_effects: Option<Vec<String>> = if matches.opt_present("e") {
+		let mut fx: Vec<String> = Vec::new();
+		'outer: for p in matches.opt_positions("e") {
+			let mut i = p + 2;
+			println!("{}", i);
+			loop {
+				if let Some(effect) = env::args().nth(i) {
+					if effect.chars().nth(0).unwrap() == '-' {
+						break;
+					}
+					for i in 0..free_matches.len() {
+						if free_matches[i] == effect {
+							free_matches.remove(i);
+							break;
+						}
+					}
+					fx.push(effect);
+					i += 1;
+				} else {
+					println!("check");
+					break 'outer;
+				}
+			}
+		}
+		
+		Some(fx)
+	} else {
+		None
+	};
+	
 	let mut text = String::new();
 	
 	let mut piped = false;
@@ -140,13 +181,19 @@ fn main() {
 		 // Ignore user input
 		thread::spawn(move || read_stdin(&tx));
 	} else {
-		text = if !matches.free.is_empty() {
-			matches.free[0].clone()
+		if !free_matches.is_empty() {
+			for word in free_matches {
+				text = [text, word].join(" ");
+			}
 		} else {
+			println!("Please either provide text as an argument or pipe it in.\n");
 			print_usage(&program, opts);
 			return;
 		};
 	}
+	
+	// This is used by the color functions to determine what escape sequences can be used
+	let term_color_support = get_term_color_support();
 	
 	let min_frametime = 1000 / MAX_FRAMERATE;
 	let mut stdout = stdout();
@@ -158,7 +205,7 @@ fn main() {
 	crossterm::execute!(stdout, crossterm::terminal::EnterAlternateScreen).unwrap();
 	
 	// This will be called on a panic so the terminal doesn't stay all messed up
-	/*panic::set_hook(Box::new(|info| {
+	panic::set_hook(Box::new(|info| {
 		let mut stdout = std::io::stdout();
 		
 		crossterm::terminal::disable_raw_mode().unwrap();
@@ -167,8 +214,8 @@ fn main() {
 		crossterm::execute!(stdout, crossterm::cursor::Show).unwrap();
 		
 		println!("{}", info);
-	}));*/
-	
+	}));
+
 	'outer: loop {
 		for word in text.split_whitespace() { // Main loop
 			let random = (rng.gen::<i32>(), rng.gen::<i32>());
@@ -187,7 +234,7 @@ fn main() {
 				let tsize = crossterm::terminal::size().unwrap();
 				let mut pixels: Vec<Vec<u8>> = vec![vec![b' '; tsize.0 as usize]; tsize.1 as usize];
 				
-				effects::background_effect(&mut pixels, progress, random.0);
+				//apply_effect(EffectType::Background, &mut pixels, progress, random.0, &selected_effects, &term_color_support);
 				
 				let max_width = match scroll_fit {
 					true => None,
@@ -196,10 +243,10 @@ fn main() {
 				
 				let mut render = render_word(word, &font, " .:-=+*#%@", ((tsize.1 as f32)/2.0).max(10.0 as f32), max_width); 
 				
-				effects::text_effect(&mut render, progress, random.1);
+				apply_effect(EffectType::Text, &mut render, progress, random.1, &selected_effects, &term_color_support);
 				
 				if render[0].len() as u16 > tsize.0 /*&& scroll_fit*/ {
-					scroll(&mut pixels, render, progress);    
+					scroll(&mut pixels, render, progress);
 				} else {
 					comp(&mut pixels, render, tsize.0 as i32 / 2, tsize.1 as i32 / 2);
 				}
