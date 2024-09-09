@@ -25,7 +25,7 @@ pub fn get_term_color_support() -> TermColorSupport {
 	}
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
 	r: u8,
 	g: u8,
@@ -108,47 +108,4 @@ impl Color {
 			TermColorSupport::None => None
 		}
 	}
-}
-
-// Color provided line of text
-pub fn color_text(line: &mut Vec<u8>, color: Color, term_color_support: &TermColorSupport, start: Option<usize>, end: Option<usize>) {
-	let escape = match color.to_escape(term_color_support) {
-		None => return,
-		Some(e) => e
-	};
-	let mut start = match start {
-		Some(s) => s,
-		None => 0
-	};
-	let mut end = match end {
-		Some(e) => e,
-		None => line.len()
-	};
-	for c in escape.bytes() {
-		line.insert(start, c);
-		start += 1;
-		end += 1;
-	}
-	for c in "\x1b[0m".bytes() {
-		line.insert(end, c);
-		end += 1;
-	}
-}
-
-// Give (x, y) size of provided text without counting escape sequences
-pub fn size_no_escape(pixels: &Vec<Vec<u8>>) -> (u16, u16) {
-	let y = pixels.len() as u16;
-	let mut x = 0;
-	let mut iter = pixels[0].iter();
-	
-	while let Some(c) = iter.next() {
-		if *c == b'\x1b' {
-			while iter.next().unwrap() != &b'm' {}
-		}
-		else {
-			x += 1
-		};
-	}
-	
-	(x,y)
 }

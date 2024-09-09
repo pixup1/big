@@ -9,10 +9,12 @@ use std::panic;
 // crates
 use getopts::Options;
 use crossterm;
+use pixels::Pixels;
 use rusttype::{point, Font, Scale};
 use rand::Rng;
 
 // source files
+mod pixels;
 mod effects;
 mod color;
 mod term_colors;
@@ -24,7 +26,7 @@ const MAX_FRAMERATE: u32 = 60;
 const PUNCTUATION: &str = ".,!?;:";
 
 // See https://github.com/redox-os/rusttype/blob/master/dev/examples/ascii.rs
-fn render_word(word: &str, font: &Font, mapping_chars: &str, height: f32, max_width: Option<f32>) -> Vec<Vec<u8>> {
+fn render_word(word: &str, font: &Font, mapping_chars: &str, height: f32, max_width: Option<f32>) -> Pixels {
 	// Compensate for the aspect ratio of monospace characters
 	let scale = Scale {
 		x: height * 2.0,
@@ -44,7 +46,7 @@ fn render_word(word: &str, font: &Font, mapping_chars: &str, height: f32, max_wi
 		.unwrap_or(0.0)
 		.ceil() as usize;
 	
-	let mut pixels = vec![vec![b' '; width]; height.ceil() as usize]; // 2D array of characters, each row is a line of text
+	let mut pixels = Pixels::new((width, height as usize));
 	let mapping = mapping_chars.as_bytes();
 	let mapping_scale = (mapping.len() - 1) as f32;
 	
@@ -60,7 +62,7 @@ fn render_word(word: &str, font: &Font, mapping_chars: &str, height: f32, max_wi
 				if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
 					let x = x as usize;
 					let y = y as usize;
-					pixels[y][x] = c;
+					pixels.set_char((x,y), c);
 				}
 			})
 		}
@@ -69,28 +71,9 @@ fn render_word(word: &str, font: &Font, mapping_chars: &str, height: f32, max_wi
 	pixels
 }
 
-// Display pixels centered at x,y
-fn comp(pixels: &mut Vec<Vec<u8>>, to_comp: Vec<Vec<u8>>, x: i32, y: i32) {
-	let to_comp_size = size_no_escape(&to_comp);
-	let origin = (x - to_comp_size.0 as i32 / 2, y - to_comp_size.1 as i32 / 2);
-	
-	//TODO: handle escape sequences out of the screen
-	for i in 0..to_comp.len() {
-		for j in 0..to_comp[i].len() {
-			let x = origin.0 + j as i32;
-			let y = origin.1 + i as i32;
-			if to_comp[i][j] != b' ' && x >= 0 && x < pixels[0].len() as i32 && y >= 0 && y < pixels.len() as i32 {
-				pixels[y as usize][x as usize] = to_comp[i][j];
-			}
-		}
-	}
-}
-
-fn scroll(pixels: &mut Vec<Vec<u8>>, to_comp: Vec<Vec<u8>>, progress: f32) {
-	let tsize = crossterm::terminal::size().unwrap();
-	let x = (1.0-progress) * (0.3 * tsize.0 as f32 + to_comp[0].len() as f32 / 2.0) + progress * (tsize.0 as f32 * 0.7     - to_comp[0].len() as f32 / 2.0);
-	
-	comp(pixels, to_comp, x as i32, tsize.1 as i32 / 2);
+fn scroll(pixels: &mut Pixels, to_comp: &Pixels, progress: f32, tsize: (u16, u16)) {
+	let x = (1.0-progress) * (0.3 * tsize.0 as f32 + to_comp.size.0 as f32 / 2.0) + progress * (tsize.0 as f32 * 0.7 - to_comp.size.0 as f32 / 2.0);
+	pixels.comp(& to_comp, (x as i32, tsize.1 as i32 / 2));
 }
 
 fn print_usage(program: &str, opts: Options) {
@@ -232,7 +215,7 @@ fn main() {
 				let progress = timer.elapsed().as_millis() as f32 / time as f32;
 				let frametime = Instant::now();    
 				let tsize = crossterm::terminal::size().unwrap();
-				let mut pixels: Vec<Vec<u8>> = vec![vec![b' '; tsize.0 as usize]; tsize.1 as usize];
+				let mut pixels = Pixels::new((tsize.0 as usize, tsize.1 as usize));
 				
 				//apply_effect(EffectType::Background, &mut pixels, progress, random.0, &selected_effects, &term_color_support);
 				
@@ -245,20 +228,13 @@ fn main() {
 				
 				apply_effect(EffectType::Text, &mut render, progress, random.1, &selected_effects, &term_color_support);
 				
-				if render[0].len() as u16 > tsize.0 /*&& scroll_fit*/ {
-					scroll(&mut pixels, render, progress);
+				if render.size.0 as u16 > tsize.0 /*&& scroll_fit*/ {
+					scroll(&mut pixels, &render, progress, tsize);
 				} else {
-					comp(&mut pixels, render, tsize.0 as i32 / 2, tsize.1 as i32 / 2);
+					pixels.comp(&render, (tsize.0 as i32 / 2, tsize.1 as i32 / 2));
 				}
 				
-				for i in 0..pixels.len() {
-					crossterm::execute!(stdout, crossterm::cursor::MoveTo(0, i as u16)).unwrap();
-					let mut line = String::new();
-					for j in 0..pixels[i].len() {
-						line.push(pixels[i][j] as char);
-					}
-					print!("{}", line);
-				}
+				pixels.render(&term_color_support);
 				
 				if crossterm::event::poll(std::time::Duration::from_secs(0)).unwrap() {
 					if let crossterm::event::Event::Key(_key_event) = crossterm::event::read().unwrap() {
