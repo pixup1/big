@@ -9,7 +9,7 @@ pub struct Pixels {
 impl Pixels {
 	pub fn new(size: (usize, usize)) -> Pixels {
 		Pixels {
-			size: size,
+			size,
 			chars: vec![b' '; size.0 * size.1],
 			colors: vec![Color::new_rgb(255, 255, 255); size.0 * size.1],
 		}

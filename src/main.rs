@@ -9,9 +9,9 @@ use std::panic;
 // crates
 use getopts::Options;
 use crossterm;
-use pixels::Pixels;
+use rand::rngs::StdRng;
 use rusttype::{point, Font, Scale};
-use rand::Rng;
+use rand::{SeedableRng, Rng, thread_rng};
 
 // source files
 mod pixels;
@@ -21,9 +21,18 @@ mod term_colors;
 
 use effects::*;
 use color::*;
+use pixels::Pixels;
 
 const MAX_FRAMERATE: u32 = 60;
 const PUNCTUATION: &str = ".,!?;:";
+
+// Map value to a character in mapping_chars
+fn cacamap(mapping_chars: &str, value: f32) -> u8 {
+	let mapping = mapping_chars.as_bytes();
+	let mapping_scale = (mapping.len() - 1) as f32;
+	let i = (value * mapping_scale + 0.5) as usize;
+	mapping.get(i).cloned().unwrap_or(mapping[mapping.len() - 1]) // If there's an error we just use the maximum value
+}
 
 // See https://github.com/redox-os/rusttype/blob/master/dev/examples/ascii.rs
 fn render_word(word: &str, font: &Font, mapping_chars: &str, height: f32, max_width: Option<f32>) -> Pixels {
@@ -47,15 +56,12 @@ fn render_word(word: &str, font: &Font, mapping_chars: &str, height: f32, max_wi
 		.ceil() as usize;
 	
 	let mut pixels = Pixels::new((width, height as usize));
-	let mapping = mapping_chars.as_bytes();
-	let mapping_scale = (mapping.len() - 1) as f32;
 	
 	for g in glyphs {
 		if let Some(bb) = g.pixel_bounding_box() {
 			g.draw(|x, y, v| {
 				// v should be in the range 0.0 to 1.0
-				let i = (v * mapping_scale + 0.5) as usize;
-				let c = mapping.get(i).cloned().unwrap_or(mapping[mapping.len() - 1]); // If there's an error we just use the maximum value
+				let c = cacamap(mapping_chars, v);
 				let x = x as i32 + bb.min.x;
 				let y = y as i32 + bb.min.y;
 				// There's still a possibility that the glyph clips the boundaries of the bitmap
@@ -126,6 +132,7 @@ fn main() {
 	
 	let mut free_matches = matches.free.clone(); // This one will take into account all the effects instead of just the first one, as I'm pretty sure getopts can't do that.
 	
+	// TODO: Fix this, when effects are at the end they don't work
 	let selected_effects: Vec<String> = if matches.opt_present("e") {
 		let mut fx: Vec<String> = Vec::new();
 		'outer: for p in matches.opt_positions("e") {
@@ -179,7 +186,6 @@ fn main() {
 	
 	let min_frametime = 1000 / MAX_FRAMERATE;
 	let mut stdout = stdout();
-	let mut rng = rand::thread_rng();
 	
 	crossterm::terminal::enable_raw_mode().unwrap();
 	crossterm::execute!(stdout, crossterm::cursor::Hide).unwrap();
@@ -200,9 +206,9 @@ fn main() {
 
 	'outer: loop {
 		for word in text.split_whitespace() { // Main loop
-			let random = (rng.gen::<i32>(), rng.gen::<i32>());
-			let scroll_fit = rng.gen::<bool>(); // If false words will be shrunk to fit
-			
+			let mut seed: <StdRng as SeedableRng>::Seed = Default::default();
+			thread_rng().fill(&mut seed);
+
 			// Time to show current word for in milliseconds
 			let time = ((200.0 + 60.0 * word.len() as f32
 				+ if PUNCTUATION.contains(word.chars().last().unwrap()) {350.0} else {0.0})
@@ -216,7 +222,11 @@ fn main() {
 				let tsize = crossterm::terminal::size().unwrap();
 				let mut pixels = Pixels::new((tsize.0 as usize, tsize.1 as usize));
 				
-				//apply_effect(EffectType::Background, &mut pixels, frame_progress, timer, speed, random.0, &selected_effects);
+				let mut rng = StdRng::from_seed(seed);
+				
+				apply_effect(EffectType::Background, &mut pixels, frame_progress, timer, speed, &mut rng, &selected_effects);
+				
+				let scroll_fit = rng.gen::<bool>(); // If false words will be shrunk to fit
 				
 				let max_width = match scroll_fit {
 					true => None,
@@ -227,7 +237,7 @@ fn main() {
 				
 				let size_before_effect = word.size;
 				
-				apply_effect(EffectType::Text, &mut word, frame_progress, timer, speed, random.1, &selected_effects);
+				apply_effect(EffectType::Text, &mut word, frame_progress, timer, speed, &mut rng, &selected_effects);
 				
 				if size_before_effect.0 as u16 > tsize.0 /*&& scroll_fit*/ {
 					scroll(&mut pixels, &word, frame_progress, tsize);

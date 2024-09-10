@@ -1,6 +1,8 @@
 use std::{str::FromStr, time::Instant};
 
-use crate::{Color, TermColorSupport, Pixels};
+use rand::{Rng, rngs::StdRng};
+
+use crate::{cacamap, Color, Pixels};
 
 #[derive(PartialEq, Eq)]
 pub enum EffectType {
@@ -11,27 +13,43 @@ pub enum EffectType {
 struct Effect {
 	name: &'static str,
 	r#type: EffectType,
-	function: fn(&mut Pixels, f32, Instant, f32, i32),
+	function: fn(&mut Pixels, f32, Instant, f32, &mut StdRng),
 }
 
-static EFFECTS: [Effect;4] = [
+static EFFECTS: [Effect;5] = [
 	Effect {
 		name: "empty",
 		r#type: EffectType::Background,
-		function: |_: &mut Pixels, _: f32, _: Instant, _: f32, _: i32| {}
+		function: |_: &mut Pixels, _: f32, _: Instant, _: f32, _: &mut StdRng| {}
+	},
+	Effect {
+		name: "wave",
+		r#type: EffectType::Background,
+		function: |pixels: &mut Pixels, _: f32, timer: Instant, speed: f32, rng: &mut StdRng| {
+			let hue = rng.gen_range(0.0..360.0);
+			
+			for i in 0..pixels.size.1 {
+				let c = cacamap(" .:-=+*#%@", ((i as f32 + timer.elapsed().as_secs_f32() * if i < pixels.size.1/2 {14.0} else {-14.0} /speed).sin()+1.0)/2.0);
+				
+				for j in 0..pixels.size.0 {
+					pixels.set_char((j,i), c);
+					pixels.set_color((j, i), Color::new_hsv(hue, 1.0, 0.8));
+				}
+			}
+		}
 	},
 	Effect {
 		name: "normal",
 		r#type: EffectType::Text,
-		function: |_: &mut Pixels, _: f32, _: Instant, _: f32, _: i32| {}
+		function: |_: &mut Pixels, _: f32, _: Instant, _: f32, _: &mut StdRng| {}
 	},
 	Effect {
 		name: "rainbow",
 		r#type: EffectType::Text,
-		function: |pixels: &mut Pixels, _: f32, timer: Instant, speed: f32, _: i32| {
+		function: |pixels: &mut Pixels, _: f32, timer: Instant, speed: f32, _: &mut StdRng| {
 			for i in 0..pixels.size.1 {
 				for j in 0..pixels.size.0 {
-					pixels.set_color((j, i), Color::new_hsv((speed*timer.elapsed().as_secs_f32()*500.0 + ((i*i + j*j) as f32).sqrt())%360.0, 1.0, 1.0));
+					pixels.set_color((j, i), Color::new_hsv((timer.elapsed().as_secs_f32()/speed*500.0 + ((i*i + j*j) as f32).sqrt()*2.0)%360.0, 1.0, 1.0));
 				}
 			}
 		}
@@ -39,12 +57,21 @@ static EFFECTS: [Effect;4] = [
 	Effect {
 		name: "split",
 		r#type: EffectType::Text,
-		function: |pixels: &mut Pixels, frame_progress: f32, timer: Instant, speed: f32, rand: i32| {
-			let mut new_pixels = Pixels::new((pixels.size.0 + (frame_progress * 12.0) as usize, pixels.size.1 + (frame_progress * 6.0) as usize));
-			pixels.color_all(Color::new_rgb(255, 0, 0));
-			new_pixels.comp(pixels, (new_pixels.size.0 as i32 / 2 - (frame_progress * 6.0) as i32, new_pixels.size.1 as i32 / 2 - (frame_progress * 3.0) as i32));
-			pixels.color_all(Color::new_rgb(0, 255, 0));
-			new_pixels.comp(pixels, (new_pixels.size.0 as i32 / 2 + (frame_progress * 6.0) as i32, new_pixels.size.1 as i32 / 2 + (frame_progress * 3.0) as i32));
+		function: |pixels: &mut Pixels, frame_progress: f32, _: Instant, _: f32, rng: &mut StdRng| {
+			let direction: i32;
+			if rng.gen::<bool>() {
+				direction = 1;
+			} else {
+				direction = -1;
+			}
+			let c1 = Color::new_hsv(rng.gen_range(0.0..360.0), 1.0, 1.0);
+			let c2 = Color::new_hsv(rng.gen_range(0.0..360.0), 1.0, 1.0);
+			
+			let mut new_pixels = Pixels::new((pixels.size.0 + (frame_progress * 8.0) as usize, pixels.size.1 + (frame_progress * 4.0) as usize));
+			pixels.color_all(c1);
+			new_pixels.comp(pixels, (new_pixels.size.0 as i32 / 2 - (frame_progress * 4.0) as i32, new_pixels.size.1 as i32 / 2 - direction * (frame_progress * 2.0) as i32));
+			pixels.color_all(c2);
+			new_pixels.comp(pixels, (new_pixels.size.0 as i32 / 2 + (frame_progress * 4.0) as i32, new_pixels.size.1 as i32 / 2 + direction * (frame_progress * 2.0) as i32));
 			pixels.color_all(Color::new_rgb(255, 255, 255));
 			new_pixels.comp(pixels, (new_pixels.size.0 as i32 / 2, new_pixels.size.1 as i32 / 2));
 			*pixels = new_pixels;
@@ -70,7 +97,7 @@ pub fn list_effects() -> String {
 	fx
 }
 
-pub fn apply_effect(r#type: EffectType, pixels: &mut Pixels, frame_progress: f32, timer: Instant, speed: f32, rand: i32, selected_effects: &Vec<String>) {
+pub fn apply_effect(r#type: EffectType, pixels: &mut Pixels, frame_progress: f32, timer: Instant, speed: f32, rng: &mut StdRng, selected_effects: &Vec<String>) {
 	let mut real_selection: Vec<String> = Vec::new();
 	
 	for sel_e in selected_effects {
@@ -86,7 +113,7 @@ pub fn apply_effect(r#type: EffectType, pixels: &mut Pixels, frame_progress: f32
 		}
 		
 		if !found {
-			panic!("Effect \"{}\" does not exist", sel_e);	
+			panic!("Effect \"{}\" does not exist.\n\nUse --help flag for a list of available effects.", sel_e);
 		}
 	}
 	
@@ -98,11 +125,11 @@ pub fn apply_effect(r#type: EffectType, pixels: &mut Pixels, frame_progress: f32
 		}
 	}
 	
-	let pick = rand as usize % real_selection.len() as usize;
+	let pick = rng.gen::<usize>()  % real_selection.len() as usize;
 	
 	for e in EFFECTS.iter() {
 		if e.name == real_selection[pick] {
-			(e.function)(pixels, frame_progress, timer, speed, rand);
+			(e.function)(pixels, frame_progress, timer, speed, rng);
 		}
 	}
 }
