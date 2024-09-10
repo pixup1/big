@@ -82,8 +82,8 @@ impl Color {
 		let mut best = 0;
 		let mut best_score = std::f32::MAX;
 		for i in 1..colors.len() {
-			// Distance in RGB space (lower = better match)
-			let score = ((colors[i].r - self.r) as f32).powf(2.0) + ((colors[i].g - self.g) as f32).powf(2.0) + ((colors[i].b - self.b) as f32).powf(2.0);
+			// Distance in RGB space (lower = better match) // TODO: Fix this
+			let score = (colors[i].r as f32 - self.r as f32).powf(2.0) + (colors[i].g as f32 - self.g as f32).powf(2.0) + (colors[i].b as f32 - self.b as f32).powf(2.0);
 			if score < best_score {
 				best = i;
 				best_score = score;

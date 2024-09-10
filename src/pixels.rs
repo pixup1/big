@@ -23,6 +23,15 @@ impl Pixels {
 		self.colors[position.1 * self.size.0 + position.0] = color;
 	}
 	
+	pub fn color_all(&mut self, color: Color) {
+		for i in 0..self.size.1 {
+			for j in 0..self.size.0 {
+				self.set_color((j, i), color);
+			}
+		}
+	}
+	
+	// Composite to_comp onto self centered at position (0,0 = top left corner of self)
 	pub fn comp(&mut self, to_comp: &Pixels, position: (i32, i32)) {
 		let origin = (position.0 - to_comp.size.0  as i32 / 2, position.1 - to_comp.size.1 as i32 / 2);
 		
@@ -32,7 +41,7 @@ impl Pixels {
 			for j in 0..to_comp.size.0 {
 				let x = origin.0 + j as i32;
 				
-				if x >= 0 && x < self.size.0 as i32 && y >= 0 && y < self.size.1 as i32 {
+				if x >= 0 && x < self.size.0 as i32 && y >= 0 && y < self.size.1 as i32 && to_comp.chars[i * to_comp.size.0 + j] != b' ' {
 					self.set_char((x as usize, y as usize), to_comp.chars[i * to_comp.size.0 + j]);
 					self.set_color((x as usize, y as usize), to_comp.colors[i * to_comp.size.0 + j]);
 				}

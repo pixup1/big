@@ -71,14 +71,15 @@ fn render_word(word: &str, font: &Font, mapping_chars: &str, height: f32, max_wi
 	pixels
 }
 
-fn scroll(pixels: &mut Pixels, to_comp: &Pixels, progress: f32, tsize: (u16, u16)) {
-	let x = (1.0-progress) * (0.3 * tsize.0 as f32 + to_comp.size.0 as f32 / 2.0) + progress * (tsize.0 as f32 * 0.7 - to_comp.size.0 as f32 / 2.0);
+fn scroll(pixels: &mut Pixels, to_comp: &Pixels, frame_progress: f32, tsize: (u16, u16)) {
+	let x = (1.0-frame_progress) * (0.3 * tsize.0 as f32 + to_comp.size.0 as f32 / 2.0) + frame_progress * (tsize.0 as f32 * 0.7 - to_comp.size.0 as f32 / 2.0);
 	pixels.comp(& to_comp, (x as i32, tsize.1 as i32 / 2));
 }
 
 fn print_usage(program: &str, opts: Options) {
 	let brief = format!("Usage: {} TEXT [options]", program);
 	print!("{}", opts.usage(&brief));
+	print!("\n{}", list_effects());
 }
 
 fn read_stdin(tx: &    mpsc::Sender<String>) {
@@ -125,11 +126,10 @@ fn main() {
 	
 	let mut free_matches = matches.free.clone(); // This one will take into account all the effects instead of just the first one, as I'm pretty sure getopts can't do that.
 	
-	let selected_effects: Option<Vec<String>> = if matches.opt_present("e") {
+	let selected_effects: Vec<String> = if matches.opt_present("e") {
 		let mut fx: Vec<String> = Vec::new();
 		'outer: for p in matches.opt_positions("e") {
 			let mut i = p + 2;
-			println!("{}", i);
 			loop {
 				if let Some(effect) = env::args().nth(i) {
 					if effect.chars().nth(0).unwrap() == '-' {
@@ -144,15 +144,14 @@ fn main() {
 					fx.push(effect);
 					i += 1;
 				} else {
-					println!("check");
 					break 'outer;
 				}
 			}
 		}
 		
-		Some(fx)
+		fx
 	} else {
-		None
+		Vec::new()
 	};
 	
 	let mut text = String::new();
@@ -212,29 +211,36 @@ fn main() {
 			let timer = Instant::now();
 			
 			while timer.elapsed().as_millis() < time as u128 {
-				let progress = timer.elapsed().as_millis() as f32 / time as f32;
-				let frametime = Instant::now();    
+				let frame_progress = timer.elapsed().as_millis() as f32 / time as f32;
+				let frametime = Instant::now();
 				let tsize = crossterm::terminal::size().unwrap();
 				let mut pixels = Pixels::new((tsize.0 as usize, tsize.1 as usize));
 				
-				//apply_effect(EffectType::Background, &mut pixels, progress, random.0, &selected_effects, &term_color_support);
+				//apply_effect(EffectType::Background, &mut pixels, frame_progress, timer, speed, random.0, &selected_effects);
 				
 				let max_width = match scroll_fit {
 					true => None,
 					false => Some((tsize.0 - 6) as f32)
 				};
 				
-				let mut render = render_word(word, &font, " .:-=+*#%@", ((tsize.1 as f32)/2.0).max(10.0 as f32), max_width); 
+				let mut word = render_word(word, &font, " .:-=+*#%@", ((tsize.1 as f32)/2.0).max(10.0 as f32), max_width); 
 				
-				apply_effect(EffectType::Text, &mut render, progress, random.1, &selected_effects, &term_color_support);
+				let size_before_effect = word.size;
 				
-				if render.size.0 as u16 > tsize.0 /*&& scroll_fit*/ {
-					scroll(&mut pixels, &render, progress, tsize);
+				apply_effect(EffectType::Text, &mut word, frame_progress, timer, speed, random.1, &selected_effects);
+				
+				if size_before_effect.0 as u16 > tsize.0 /*&& scroll_fit*/ {
+					scroll(&mut pixels, &word, frame_progress, tsize);
 				} else {
-					pixels.comp(&render, (tsize.0 as i32 / 2, tsize.1 as i32 / 2));
+					pixels.comp(&word, (tsize.0 as i32 / 2, tsize.1 as i32 / 2));
 				}
 				
 				pixels.render(&term_color_support);
+				
+				if cfg!(debug_assertions) { //TODO: Fix this it doesn't do anything
+					crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveTo(0, 0)).unwrap();
+					print!("{}ms", frametime.elapsed().as_millis());
+				}
 				
 				if crossterm::event::poll(std::time::Duration::from_secs(0)).unwrap() {
 					if let crossterm::event::Event::Key(_key_event) = crossterm::event::read().unwrap() {

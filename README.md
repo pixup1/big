@@ -2,14 +2,22 @@
 
 Build with `cargo build --release`
 
-Usage: `target/release/big TEXT [options]`
+Usage: `target/debug/big TEXT [options]`
 
 Options:
 ```
     -f, --font PATH     set font
-    -s, --speed INTEGER set text speed (default: 10)
+    -s, --speed INT     set text speed (default: 10)
+    -e, --effects EFFECT1 EFFECT2 ...
+                        pick only some effects
     -l, --loop          loop text
-    -h, --help          print this help menu
+    -h, --help          print help menu
 ```
 
-Press any key to exit. Cross-platform, tested on Linux (Konsole) and Windows 11 (cmd).
+Background effects :
+ - empty
+
+Text effects :
+ - normal
+ - rainbow
+ - split
