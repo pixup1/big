@@ -34,7 +34,7 @@ fn cacamap(mapping_chars: &str, value: f32) -> u8 {
 	mapping.get(i).cloned().unwrap_or(mapping[mapping.len() - 1]) // If there's an error we just use the maximum value
 }
 
-// See https://github.com/redox-os/rusttype/blob/master/dev/examples/ascii.rs
+// See https://github.com/redox-os/rusttype/blob/master/dev/examples/ascii.rs //TODO: Do something with max_width, idk
 fn render_word(word: &str, font: &Font, mapping_chars: &str, height: f32, max_width: Option<f32>) -> Pixels {
 	// Compensate for the aspect ratio of monospace characters
 	let scale = Scale {
@@ -108,6 +108,7 @@ fn main() {
 	let mut opts = Options::new();
 	opts.optopt("f", "font", "set font", "PATH");
 	opts.optopt("s", "speed", "set text speed (default: 10)", "INT");
+	opts.optopt("S", "size", "set text size (default: 10)", "INT");
 	opts.optopt("e", "effects", "pick only some effects", "EFFECT1 EFFECT2 ...");
 	opts.optflag("l", "loop", "loop text");
 	opts.optflag("h", "help", "print this help menu");
@@ -129,14 +130,26 @@ fn main() {
 		Some(inverse_speed) => 10.0 / inverse_speed.parse::<i32>().unwrap_or(10) as f32,
 		None => 1.0
 	};
+	let size = match matches.opt_str("S") {
+		Some(size) => size.parse::<f32>().unwrap_or(10.0)/10.0,
+		None => 1.0
+	};
 	
 	let mut free_matches = matches.free.clone(); // This one will take into account all the effects instead of just the first one, as I'm pretty sure getopts can't do that.
 	
-	// TODO: Fix this, when effects are at the end they don't work
 	let selected_effects: Vec<String> = if matches.opt_present("e") {
+		let mut e_opt_positions:Vec<usize> = Vec::new(); // Of course getopts has an opt_positions() function but that function would be useful if it actually worked
+		
+		for i in 0..env::args().len() {
+			if env::args().nth(i).unwrap() == "-e" {
+				e_opt_positions.push(i);
+			}
+		}
+				
 		let mut fx: Vec<String> = Vec::new();
-		'outer: for p in matches.opt_positions("e") {
-			let mut i = p + 2;
+		
+		'outer: for p in e_opt_positions {
+			let mut i = p + 1;
 			loop {
 				if let Some(effect) = env::args().nth(i) {
 					if effect.chars().nth(0).unwrap() == '-' {
@@ -183,6 +196,7 @@ fn main() {
 	
 	// This is used by the color functions to determine what escape sequences can be used
 	let term_color_support = get_term_color_support();
+	//let term_color_support = TermColorSupport::Ansi256;
 	
 	let min_frametime = 1000 / MAX_FRAMERATE;
 	let mut stdout = stdout();
@@ -203,7 +217,9 @@ fn main() {
 		
 		println!("{}", info);
 	}));
-
+	
+	let full_timer = Instant::now();
+	
 	'outer: loop {
 		for word in text.split_whitespace() { // Main loop
 			let mut seed: <StdRng as SeedableRng>::Seed = Default::default();
@@ -224,7 +240,7 @@ fn main() {
 				
 				let mut rng = StdRng::from_seed(seed);
 				
-				apply_effect(EffectType::Background, &mut pixels, frame_progress, timer, speed, &mut rng, &selected_effects);
+				apply_effect(EffectType::Background, &mut pixels, frame_progress, full_timer, speed, &mut rng, &selected_effects);
 				
 				let scroll_fit = rng.gen::<bool>(); // If false words will be shrunk to fit
 				
@@ -233,11 +249,11 @@ fn main() {
 					false => Some((tsize.0 - 6) as f32)
 				};
 				
-				let mut word = render_word(word, &font, " .:-=+*#%@", ((tsize.1 as f32)/2.0).max(10.0 as f32), max_width); 
+				let mut word = render_word(word, &font, " .:-=+*#%@", (size*(tsize.1 as f32)/2.0).max(10.0 as f32), max_width); 
 				
 				let size_before_effect = word.size;
 				
-				apply_effect(EffectType::Text, &mut word, frame_progress, timer, speed, &mut rng, &selected_effects);
+				apply_effect(EffectType::Text, &mut word, frame_progress, full_timer, speed, &mut rng, &selected_effects);
 				
 				if size_before_effect.0 as u16 > tsize.0 /*&& scroll_fit*/ {
 					scroll(&mut pixels, &word, frame_progress, tsize);

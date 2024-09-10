@@ -2,12 +2,13 @@
 
 Build with `cargo build --release`
 
-Usage: `target/debug/big TEXT [options]`
+Usage: `target/release/big TEXT [options]`
 
 Options:
 ```
     -f, --font PATH     set font
     -s, --speed INT     set text speed (default: 10)
+    -S, --size INT      set text size (default: 10)
     -e, --effects EFFECT1 EFFECT2 ...
                         pick only some effects
     -l, --loop          loop text
@@ -16,6 +17,8 @@ Options:
 
 Background effects :
  - empty
+ - wave
+ - spiral
 
 Text effects :
  - normal

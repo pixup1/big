@@ -16,7 +16,7 @@ struct Effect {
 	function: fn(&mut Pixels, f32, Instant, f32, &mut StdRng),
 }
 
-static EFFECTS: [Effect;5] = [
+static EFFECTS: [Effect;6] = [
 	Effect {
 		name: "empty",
 		r#type: EffectType::Background,
@@ -39,6 +39,23 @@ static EFFECTS: [Effect;5] = [
 		}
 	},
 	Effect {
+		name: "spiral",
+		r#type: EffectType::Background,
+		function: |pixels: &mut Pixels, _: f32, timer: Instant, speed: f32, rng: &mut StdRng| {
+			for i in 0..pixels.size.1 {
+				let y = (i as f32 - pixels.size.1 as f32 / 2.0) * 10.0;
+				
+				for j in 0..pixels.size.0 {
+					let x = j as f32 - pixels.size.0 as f32 / 2.0;
+					let angle = (y/x).atan();
+					let distance = (x*x + y*y).sqrt();
+					pixels.set_char((j,i), cacamap(" .:-=+*#%@", ((angle*16.0 + timer.elapsed().as_secs_f32()/speed * 3.0 + distance/100.0).cos()+1.0)/2.0));
+					pixels.set_color((j,i), Color::new_hsv((distance + timer.elapsed().as_secs_f32() * 200.0)%360.0, 0.6, 1.0))
+				}
+			}
+		}
+	},
+	Effect {
 		name: "normal",
 		r#type: EffectType::Text,
 		function: |_: &mut Pixels, _: f32, _: Instant, _: f32, _: &mut StdRng| {}
@@ -49,7 +66,7 @@ static EFFECTS: [Effect;5] = [
 		function: |pixels: &mut Pixels, _: f32, timer: Instant, speed: f32, _: &mut StdRng| {
 			for i in 0..pixels.size.1 {
 				for j in 0..pixels.size.0 {
-					pixels.set_color((j, i), Color::new_hsv((timer.elapsed().as_secs_f32()/speed*500.0 + ((i*i + j*j) as f32).sqrt()*2.0)%360.0, 1.0, 1.0));
+					pixels.set_color((j, i), Color::new_hsv((timer.elapsed().as_secs_f32()/speed*400.0 + ((i*i + j*j) as f32).sqrt()*2.0)%360.0, 1.0, 1.0));
 				}
 			}
 		}
