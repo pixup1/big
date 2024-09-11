@@ -23,6 +23,14 @@ impl Pixels {
 		self.colors[position.1 * self.size.0 + position.0] = color;
 	}
 	
+	pub fn get_pixel(&self, position: (usize, usize)) -> Option<(u8, Color)> {
+		if position.0 < self.size.0 && position.1 < self.size.1 {
+			Some((self.chars[position.1 * self.size.0 + position.0], self.colors[position.1 * self.size.0 + position.0]))
+		} else {
+			None
+		}
+	}
+	
 	pub fn color_all(&mut self, color: Color) {
 		for i in 0..self.size.1 {
 			for j in 0..self.size.0 {

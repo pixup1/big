@@ -16,7 +16,7 @@ struct Effect {
 	function: fn(&mut Pixels, f32, Instant, f32, &mut StdRng),
 }
 
-static EFFECTS: [Effect;6] = [
+static EFFECTS: [Effect;7] = [
 	Effect {
 		name: "empty",
 		r#type: EffectType::Background,
@@ -29,7 +29,7 @@ static EFFECTS: [Effect;6] = [
 			let hue = rng.gen_range(0.0..360.0);
 			
 			for i in 0..pixels.size.1 {
-				let c = cacamap(" .:-=+*#%@", ((i as f32 + timer.elapsed().as_secs_f32() * if i < pixels.size.1/2 {14.0} else {-14.0} /speed).sin()+1.0)/2.0);
+				let c = cacamap(" .-:=+*#%@", ((i as f32 + timer.elapsed().as_secs_f32() * if i < pixels.size.1/2 {14.0} else {-14.0} /speed).sin()+1.0)/2.0);
 				
 				for j in 0..pixels.size.0 {
 					pixels.set_char((j,i), c);
@@ -41,7 +41,7 @@ static EFFECTS: [Effect;6] = [
 	Effect {
 		name: "spiral",
 		r#type: EffectType::Background,
-		function: |pixels: &mut Pixels, _: f32, timer: Instant, speed: f32, rng: &mut StdRng| {
+		function: |pixels: &mut Pixels, _: f32, timer: Instant, speed: f32, _: &mut StdRng| {
 			for i in 0..pixels.size.1 {
 				let y = (i as f32 - pixels.size.1 as f32 / 2.0) * 10.0;
 				
@@ -49,7 +49,7 @@ static EFFECTS: [Effect;6] = [
 					let x = j as f32 - pixels.size.0 as f32 / 2.0;
 					let angle = (y/x).atan();
 					let distance = (x*x + y*y).sqrt();
-					pixels.set_char((j,i), cacamap(" .:-=+*#%@", ((angle*16.0 + timer.elapsed().as_secs_f32()/speed * 3.0 + distance/100.0).cos()+1.0)/2.0));
+					pixels.set_char((j,i), cacamap(" .-:=+*#%@", ((angle*16.0 + timer.elapsed().as_secs_f32()/speed * 5.0 + distance/100.0).cos()+1.0)/2.0));
 					pixels.set_color((j,i), Color::new_hsv((distance + timer.elapsed().as_secs_f32() * 200.0)%360.0, 0.6, 1.0))
 				}
 			}
@@ -92,6 +92,21 @@ static EFFECTS: [Effect;6] = [
 			pixels.color_all(Color::new_rgb(255, 255, 255));
 			new_pixels.comp(pixels, (new_pixels.size.0 as i32 / 2, new_pixels.size.1 as i32 / 2));
 			*pixels = new_pixels;
+		}
+	},
+	Effect {
+		name: "worm",
+		r#type: EffectType::Text,
+		function: |pixels: &mut Pixels, _: f32, timer: Instant, speed: f32, _: &mut StdRng| {
+			for i in 0..pixels.size.1 {
+				for j in 0..pixels.size.0 {
+					let sample_y = (i as f32 + ((j as f32 / 20.0 + timer.elapsed().as_secs_f32() / speed * 6.0).sin().powf(2.0) * 3.0)) as i32;
+					if let Some((character, color)) = pixels.get_pixel((j, sample_y as usize)) {
+						pixels.set_char((j, i), character);
+						pixels.set_color((j, i), color);
+					}
+				}
+			}
 		}
 	},
 ];

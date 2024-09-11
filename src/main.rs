@@ -227,6 +227,8 @@ fn main() {
 
 			// Time to show current word for in milliseconds
 			let time = ((200.0 + 60.0 * word.len() as f32
+				+ (word.len() as f32 - 10.0).max(0.0) * 25.0
+				+ (word.len() as f32 - 20.0).max(0.0) * 15.0
 				+ if PUNCTUATION.contains(word.chars().last().unwrap()) {350.0} else {0.0})
 				* speed) as i32;
 			
