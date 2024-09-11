@@ -1,8 +1,8 @@
-# **big**
+![big](https://s11.gifyu.com/images/S1fVw.gif)
 
-Build with `cargo build --release`
+Build with `cargo build --release` ([cargo](https://www.rust-lang.org/fr/learn/get-started) needs to be installed)
 
-Usage: `target/release/big TEXT [options]`
+Usage: `target/release/big TEXT [options]` (piping in from other programs works as well)
 
 Options:
 ```
@@ -24,3 +24,4 @@ Text effects :
  - normal
  - rainbow
  - split
+ - worm
