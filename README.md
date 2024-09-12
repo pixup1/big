@@ -1,4 +1,4 @@
-![big](https://s11.gifyu.com/images/S1fVw.gif)
+![big](https://i.imgur.com/iReqk2e.gif)
 
 Build with `cargo build --release` ([cargo](https://www.rust-lang.org/fr/learn/get-started) needs to be installed)
 
